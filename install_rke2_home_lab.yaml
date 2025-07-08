@@ -1,0 +1,142 @@
+---
+# Home lab installation of RKE2, server/agent install
+
+- name: Prepare Master Node (Rocky)
+  hosts: masters
+  become: true
+
+  tasks:
+    - name: Set hostname
+      hostname:
+        name: "rke2-master"
+
+    - name: Install Required Packages
+      ansible.builtin.dnf:
+        name:
+          - curl
+          - bash
+        state: present
+
+    - name: Check if RKE2 Server is already installed
+      stat:
+        path: /usr/local/bin/rke2
+      register: rke2_installed
+
+    - name: Download RKE2 installer
+      get_url:
+        url: https://get.rke2.io
+        dest: /usr/local/bin/install_rke2.sh
+        mode: '0755'
+
+    - name: Install RKE2 Server
+      shell: INSTALL_RKE2_CHANNEL={{ rke2_version }} INSTALL_RKE2_TYPE=server /usr/local/bin/install_rke2.sh
+      when: not rke2_installed.stat.exists
+      args:
+        creates: /usr/local/bin/rke2
+    
+    - name: Open Firewall Port for RKE2 (9345/TCP)
+      ansible.posix.firewalld:
+        port: 9345/tcp
+        permanent: true
+        state: enabled
+        immediate: yes
+
+    - name: Open Firewall Port for Kubernetes API (6443/TCP)
+      ansible.posix.firewalld:
+        port: 6443/tcp
+        permanent: true
+        state: enabled
+        immediate: yes
+
+
+    - name: Configure RKE2 Server
+      copy:
+        dest: /etc/rancher/rke2/config.yaml
+        content: |
+          token: "{{ rke2_token }}"
+          tls-san:
+            - "{{ master_ip }}"
+          cni: "{{ rke2_cni }}"
+
+    - name: Enable and start RKE2 Server
+      systemd:
+        name: rke2-server
+        enabled: true
+        state: started
+
+    - name: Set RKE2 environment for kubectl (Master Node)
+      blockinfile:
+        path: /root/.bashrc
+        marker: "# {mark} ANSIBLE MANAGED BLOCK: RKE2 ENV"
+        block: |
+          export KUBECONFIG=/etc/rancher/rke2/rke2.yaml
+          export PATH=$PATH:$(ls -d /var/lib/rancher/rke2/data/*/bin | head -n1)
+
+- name: Prepare Agent node (Ubuntu)
+  hosts: workers
+  become: true
+
+  tasks:
+    - name: Set unique hostname
+      hostname:
+        name: "{{ inventory_hostname }}"
+
+    - name: Ensure RKE2 config directory exists
+      file:
+        path: /etc/rancher/rke2
+        state: directory
+        mode: '0755'
+
+    - name: Stop AppArmor service
+      ansible.builtin.systemd:
+        name: apparmor
+        state: stopped
+        enabled: false
+
+    - name: Install Required Packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - bash
+        state: present
+        update_cache: true
+      
+    - name: Check if RKE2 Agent is already installed
+      stat:
+        path: /usr/local/bin/rke2
+      register: rke2_installed
+
+    - name: Download RKE2 installer
+      get_url:
+        url: https://get.rke2.io
+        dest: /usr/local/bin/install_rke2.sh
+        mode: '0755'
+
+    - name: Install RKE2 Agent
+      shell: INSTALL_RKE2_CHANNEL={{ rke2_version }} INSTALL_RKE2_TYPE=agent /usr/local/bin/install_rke2.sh
+      when: not rke2_installed.stat.exists
+      args:
+        creates: /usr/local/bin/rke2
+
+    - name: Configure RKE2 Agent
+      copy:
+        dest: /etc/rancher/rke2/config.yaml
+        content: |
+          token: "{{ rke2_token }}"
+          server: "https://{{ master_ip }}:9345"
+          cni: "{{ rke2_cni }}"
+          with-node-id: true
+
+    - name: Enable and start RKE2 Agent
+      systemd:
+        name: rke2-agent
+        enabled: true
+        state: started
+
+    - name: Set RKE2 environment for kubectl (Agent Node)
+      blockinfile:
+        path: /root/.bashrc
+        marker: "# {mark} ANSIBLE MANAGED BLOCK: RKE2 ENV"
+        block: |
+          export PATH=$PATH:$(ls -d /var/lib/rancher/rke2/data/*/bin | head -n1)
+

@@ -1,0 +1,19 @@
+all:
+  vars:
+    rke2_version: v1.29
+    rke2_cni: canal
+    rke2_token: "super-secret-token"
+    master_ip: "192.168.50.61"
+  children:
+    masters:
+      hosts:
+        localhost:
+          ansible_connection: local
+    workers:
+      hosts:
+        rke2-agent-1:
+          ansible_host: 192.168.50.242
+          ansible_user: matthew
+          ansible_become: true
+          ansible_ssh_private_key_file: ~/.ssh/id_rsa
+
