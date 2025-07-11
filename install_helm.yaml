@@ -1,0 +1,24 @@
+---
+# Ansible Playbook to install Helm
+
+- name: Install Helm
+  hosts: workers
+  become: true
+
+  tasks:
+    - name: Download Helm install script
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+        dest: /tmp/get_helm.sh
+        mode: '0755'
+    
+    - name: Run Helm install script
+      ansible.builtin.command: /tmp/get_helm.sh
+      args:
+        creates: /usr/local/bin/helm
+    
+    - name: Ensure helm binary is available
+      ansible.builtin.command: helm version --short
+      changed_when: false
+
+      
