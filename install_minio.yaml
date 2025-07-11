@@ -1,0 +1,26 @@
+---
+# Ansible playbook for installing minio
+- name: Install MinIO
+  hosts: workers
+  become: true
+
+  tasks:
+    - name: Ensure Helm is installed
+      ansible.builtin.command: helm version --short
+      register: helm_check
+      failed_when: helm_check.rc != 0
+      changed_when: false
+    
+    - name: Add MinIO Helm repository
+      community.kubernetes.helm_repository:
+        name: minio
+        repo_url: https://charts.min.io/
+    
+    - name: Install MinIO via Helm
+      community.kubernetes.helm:
+        name: minio
+        chart_ref: minio/minio
+        release_namespace: minio
+        create_namespace: true
+        wait: true
+        

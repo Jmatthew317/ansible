@@ -1,0 +1,26 @@
+---
+# Ansible playbook to install harbor
+- name: Install Harbor
+  hosts: workers
+  become: true
+
+  tasks:
+    - name: Ensure Helm is installed
+      ansible.builtin.command: helm version --short
+      register: helm_check
+      failed_when: helm_check.rc != 0
+      changed_when: false
+
+    - name: Add Harbor Helm Repository
+      community.kubernetes.helm_repository:
+        name: harbor
+        repo_url: https://helm.goharbor.io
+
+    - name: Install Harbor via Helm
+      community.kubernetes.helm:
+        name: harbor
+        chart_ref: harbor/harbor
+        release_namespace: harbor
+        create_namespace: true
+        wait: true
+        
